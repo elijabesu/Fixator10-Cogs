@@ -1,5 +1,6 @@
 import base64
 import re
+from asyncio import TimeoutError as AsyncTimeoutError
 from datetime import datetime, timezone
 from io import BytesIO
 
@@ -36,7 +37,7 @@ _ = T_
 class MinecraftData(commands.Cog):
     """Minecraft-Related data"""
 
-    __version__ = "2.0.6"
+    __version__ = "2.0.8"
 
     # noinspection PyMissingConstructor
     def __init__(self, bot):
@@ -281,6 +282,9 @@ class MinecraftData(commands.Cog):
             except OSError as e:
                 await ctx.send(chat.error(_("Unable to get server's status: {}").format(e)))
                 return
+            except AsyncTimeoutError:
+                await ctx.send(chat.error(_("Unable to get server's status: Timed out")))
+                return
             # TODO: Reimplement on async query in mcstatus
             # NOTE: Possibly, make query optional
             # try:
@@ -398,24 +402,23 @@ class MinecraftData(commands.Cog):
 
     async def clear_mcformatting(self, formatted_str) -> str:
         """Remove Minecraft-formatting"""
-        if isinstance(formatted_str, dict):
-            clean = ""
-            async for text in self.gen_dict_extract("text", formatted_str):
-                clean += text
-            clean = re.sub(r"\xA7[0-9A-FK-OR]", "", clean, flags=re.IGNORECASE)
-        else:
-            clean = re.sub(r"\xA7[0-9A-FK-OR]", "", formatted_str, flags=re.IGNORECASE)
-        return clean
+        if not isinstance(formatted_str, dict):
+            return re.sub(r"\xA7[0-9A-FK-OR]", "", formatted_str, flags=re.IGNORECASE)
+        clean = ""
+        async for text in self.gen_dict_extract("text", formatted_str):
+            clean += text
+        return re.sub(r"\xA7[0-9A-FK-OR]", "", clean, flags=re.IGNORECASE)
 
     async def gen_dict_extract(self, key, var):
-        if hasattr(var, "items"):
-            for k, v in var.items():
-                if k == key:
-                    yield v
-                if isinstance(v, dict):
-                    async for result in self.gen_dict_extract(key, v):
+        if not hasattr(var, "items"):
+            return
+        for k, v in var.items():
+            if k == key:
+                yield v
+            if isinstance(v, dict):
+                async for result in self.gen_dict_extract(key, v):
+                    yield result
+            elif isinstance(v, list):
+                for d in v:
+                    async for result in self.gen_dict_extract(key, d):
                         yield result
-                elif isinstance(v, list):
-                    for d in v:
-                        async for result in self.gen_dict_extract(key, d):
-                            yield result
