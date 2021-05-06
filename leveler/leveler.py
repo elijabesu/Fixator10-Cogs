@@ -11,7 +11,7 @@ from asyncio import TimeoutError as AsyncTimeoutError
 from collections import OrderedDict
 from datetime import timedelta
 from io import BytesIO
-from typing import Union
+from typing import Union, Optional
 
 import aiohttp
 import discord
@@ -1167,7 +1167,7 @@ class Leveler(commands.Cog):
 
     @profileset.command()
     @commands.guild_only()
-    async def title(self, ctx, *, title):
+    async def title(self, ctx, *, title: Optional[str]):
         """Set your title."""
         user = ctx.author
         server = ctx.guild
