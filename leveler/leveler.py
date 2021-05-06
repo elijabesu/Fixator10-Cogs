@@ -127,6 +127,8 @@ class Leveler(commands.Cog):
         self.db = None
         self.session = aiohttp.ClientSession(loop=self.bot.loop)
 
+        self.cookies = self.bot.get_cog("Cookies")
+
     async def initialize(self):
         await self._connect_to_mongo()
 
@@ -226,10 +228,11 @@ class Leveler(commands.Cog):
         )
         em.add_field(name="Total Exp:", value=userinfo["total_exp"])
         em.add_field(name="Server Exp:", value=await self._find_server_exp(user, server))
-        u_credits = await bank.get_balance(user)
+
+        u_credits = await self.cookies.get_cookies(user)
         em.add_field(
-            name="Credits:",
-            value=f"{u_credits}{(await bank.get_currency_name(server))[0]}",
+            name="Cookies:",
+            value=f"{u_credits}C",
         )
         em.add_field(name="Info:", value=userinfo["info"] or None)
         em.add_field(
@@ -299,7 +302,7 @@ class Leveler(commands.Cog):
     async def _is_mention(self, user):
         if await self.config.mention():
             return user.mention
-        return user.name
+        return user.display_name
 
     @commands.command(usage="[page] [-rep] [-global]")
     @commands.guild_only()
@@ -513,7 +516,7 @@ class Leveler(commands.Cog):
         # creates user if doesn't exist
         await self._create_user(user, server)
         msg = ""
-        msg += "Name: {}\n".format(user.name)
+        msg += "Name: {}\n".format(user.display_name)
         msg += "Title: {}\n".format(userinfo["title"])
         msg += "Reps: {}\n".format(userinfo["rep"])
         msg += "Server Level: {}\n".format(userinfo["servers"][str(server.id)]["level"])
@@ -554,7 +557,7 @@ class Leveler(commands.Cog):
 
         em = discord.Embed(description=msg, colour=user.colour)
         em.set_author(
-            name="Profile Information for {}".format(user.name),
+            name="Profile Information for {}".format(user.display_name),
             icon_url=user.avatar_url,
         )
         await ctx.send(embed=em)
@@ -1298,10 +1301,10 @@ class Leveler(commands.Cog):
         bg_price = await self.config.bg_price()
 
         if bg_price != 0:
-            if not await bank.can_spend(user, bg_price):
+            if not await self.cookies.can_spend(user, bg_price):
                 await ctx.send(
                     f"**Insufficient funds. Backgrounds changes cost: "
-                    f"{bg_price}{(await bank.get_currency_name(server))[0]}**"
+                    f"{bg_price} :cookie:**"
                 )
                 return False
             await ctx.send(
@@ -1317,7 +1320,7 @@ class Leveler(commands.Cog):
             if not pred.result:
                 await ctx.send("**Purchase canceled.**")
                 return False
-            await bank.withdraw_credits(user, bg_price)
+            await self.cookies.withdraw_cookies(user, bg_price)
             return True
         return True
 
@@ -1630,7 +1633,7 @@ class Leveler(commands.Cog):
         counter = 1
         for page in pagify(badge_ranks, ["\n"]):
             em.description = page
-            em.set_author(name="Badges for {}".format(user.name), icon_url=user.avatar_url)
+            em.set_author(name="Badges for {}".format(user.display_name), icon_url=user.avatar_url)
             em.set_footer(text="Page {} of {}".format(counter, total_pages))
             embeds.append(em)
             counter += 1
@@ -1684,8 +1687,8 @@ class Leveler(commands.Cog):
                         if not pred.result:
                             await ctx.send("**Purchase canceled.**")
                             return
-                        if badge_info["price"] <= await bank.get_balance(user):
-                            await bank.withdraw_credits(user, badge_info["price"])
+                        if badge_info["price"] <= await self.cookies.get_cookies(user):
+                            await self.cookies.withdraw_cookies(user, badge_info["price"])
                             userinfo["badges"][
                                 "{}_{}".format(name, str(serverid))
                             ] = server_badges[name]
@@ -1698,14 +1701,14 @@ class Leveler(commands.Cog):
                                     name, badge_info["price"]
                                 )
                             )
-                        elif await bank.get_balance(user) < badge_info["price"]:
+                        elif await self.cookies.get_cookies(user) < badge_info["price"]:
                             await ctx.send(
                                 "**Not enough money! Need `{}` more.**".format(
-                                    badge_info["price"] - await bank.get_balance(user)
+                                    badge_info["price"] - await self.cookies.get_cookies(user)
                                 )
                             )
                 else:
-                    await ctx.send("**{}, you already have this badge!**".format(user.name))
+                    await ctx.send("**{}, you already have this badge!**".format(user.display_name))
             else:
                 await ctx.send(
                     "**The badge `{}` does not exist. Try `{}badge available`**".format(
@@ -2689,7 +2692,7 @@ class Leveler(commands.Cog):
         # determine info text color
         info_text_color = self._contrast(info_fill, white_color, dark_color)
         await _write_unicode(
-            (await self._truncate_text(user.name, 22)).upper(),
+            (await self._truncate_text(user.display_name, 22)).upper(),
             head_align,
             142,
             name_fnt,
@@ -2795,8 +2798,8 @@ class Leveler(commands.Cog):
             fill=exp_font_color,
         )  # Exp Text
 
-        bank_credits = await bank.get_balance(user)
-        credit_txt = f"{bank_credits}{(await bank.get_currency_name(server))[0]}"
+        cookies = await self.cookies.get_cookies(user)
+        credit_txt = f"{cookies}C"
         draw.text(
             (await self._center(200, 340, credit_txt, large_fnt), label_align - 27),
             credit_txt,
@@ -2977,13 +2980,14 @@ class Leveler(commands.Cog):
 
     # returns a string with possibly a nickname
     async def _name(self, user, max_length):
-        if user.name == user.display_name:
-            return user.name
-        return "{} ({})".format(
-            user.name,
-            await self._truncate_text(user.display_name, max_length - len(user.name) - 3),
-            max_length,
-        )
+        return user.display_name
+        # if user.name == user.display_name:
+        #     return user.name
+        # return "{} ({})".format(
+        #     user.name,
+        #     await self._truncate_text(user.display_name, max_length - len(user.name) - 3),
+        #     max_length,
+        # )
 
     async def _add_dropshadow(
         self,
@@ -3216,8 +3220,8 @@ class Leveler(commands.Cog):
             font=large_fnt,
             fill=info_text_color,
         )  # Level
-        bank_credits = await bank.get_balance(user)
-        credit_txt = f"{bank_credits}{(await bank.get_currency_name(server))[0]}"
+        cookies = await self.cookies.get_cookies(user)
+        credit_txt = f"{cookies}C"
         draw.text(
             (await self._center(260, 360, credit_txt, large_fnt), v_label_align - 30),
             credit_txt,
