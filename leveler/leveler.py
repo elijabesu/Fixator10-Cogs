@@ -1180,7 +1180,7 @@ class Leveler(commands.Cog):
             await ctx.send("**Leveler commands for this server are disabled!**")
             return
 
-        if len(title) < max_char:
+        if not title or len(title) < max_char:
             userinfo["title"] = title
             await self.db.users.update_one({"user_id": str(user.id)}, {"$set": {"title": title}})
             await ctx.send("**Your title has been succesfully set!**")
