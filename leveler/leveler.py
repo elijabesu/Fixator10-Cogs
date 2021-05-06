@@ -1181,8 +1181,8 @@ class Leveler(commands.Cog):
             return
 
         if not title:
-            userinfo["title"] = None
-            await self.db.users.update_one({"user_id": str(user.id)}, {"$set": {"title": None}})
+            userinfo["title"] = ""
+            await self.db.users.update_one({"user_id": str(user.id)}, {"$set": {"title": ""}})
             await ctx.send("**Your title has been succesfully cleared!**")
         elif len(title) < max_char:
             userinfo["title"] = title
